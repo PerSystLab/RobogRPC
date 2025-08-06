@@ -1,11 +1,11 @@
 
 
-#include "Wire.h" //I2C library
+#include <Servo.h>
 
-// Servo control pins
+// Servo control
 #define SERVO_COUNT 5
 int servoPins[SERVO_COUNT] = {3, 5, 6, 9, 10}; // PWM pins for servos
-
+Servo servos[SERVO_COUNT];
 
 // Servo positions (PWM values 500-2500)
 int servoPositions[SERVO_COUNT] = {1500, 1500, 1500, 1500, 1500};
@@ -17,14 +17,10 @@ boolean stringComplete = false;
 void setup() {
   Serial.begin(9600);
   
-  // Initialize servo pins
+  // Initialize servos
   for(int i = 0; i < SERVO_COUNT; i++) {
-    pinMode(servoPins[i], OUTPUT);
-  }
-  
-  // Initialize servos to middle position
-  for(int i = 0; i < SERVO_COUNT; i++) {
-    writeServoMicroseconds(servoPins[i], servoPositions[i]);
+    servos[i].attach(servoPins[i]);
+    servos[i].writeMicroseconds(servoPositions[i]);
   }
   
   // Configure status LED
@@ -80,7 +76,7 @@ void parseServoCommand(String command) {
   if (valueIndex == SERVO_COUNT) {
     for (int i = 0; i < SERVO_COUNT; i++) {
       servoPositions[i] = values[i];
-      writeServoMicroseconds(servoPins[i], servoPositions[i]);
+      servos[i].writeMicroseconds(servoPositions[i]);
     }
     
     // Send confirmation
@@ -93,11 +89,3 @@ void parseServoCommand(String command) {
   }
 }
 
-// Write microseconds to servo pin (software PWM)
-void writeServoMicroseconds(int pin, int microseconds) {
-  // Simple servo control - generate PWM signal
-  digitalWrite(pin, HIGH);
-  delayMicroseconds(microseconds);
-  digitalWrite(pin, LOW);
-  delayMicroseconds(20000 - microseconds); // 20ms period
-}
