@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package handcontrol;
+
+message HandData {
+  float w = 1;
+  float x = 2;
+  float y = 3;
+  float z = 4;
+  repeated int32 finger_values = 5;
+}
+
+message Ack {
+  bool success = 1;
+}
+
+service HandController {
+  rpc StreamHandData(stream HandData) returns (Ack);
+}
