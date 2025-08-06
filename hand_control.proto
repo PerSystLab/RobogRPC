@@ -3,11 +3,8 @@ syntax = "proto3";
 package handcontrol;
 
 message HandData {
-  float w = 1;
-  float x = 2;
-  float y = 3;
-  float z = 4;
-  repeated int32 finger_values = 5;
+  repeated int32 finger_values = 1;
+  int64 timestamp_ms = 2;
 }
 
 message Ack {

@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12hand_control.proto\x12\x0bhandcontrol\"M\n\x08HandData\x12\t\n\x01w\x18\x01 \x01(\x02\x12\t\n\x01x\x18\x02 \x01(\x02\x12\t\n\x01y\x18\x03 \x01(\x02\x12\t\n\x01z\x18\x04 \x01(\x02\x12\x15\n\rfinger_values\x18\x05 \x03(\x05\"\x16\n\x03\x41\x63k\x12\x0f\n\x07success\x18\x01 \x01(\x08\x32M\n\x0eHandController\x12;\n\x0eStreamHandData\x12\x15.handcontrol.HandData\x1a\x10.handcontrol.Ack(\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12hand_control.proto\x12\x0bhandcontrol\"7\n\x08HandData\x12\x15\n\rfinger_values\x18\x01 \x03(\x05\x12\x14\n\x0ctimestamp_ms\x18\x02 \x01(\x03\"\x16\n\x03\x41\x63k\x12\x0f\n\x07success\x18\x01 \x01(\x08\x32M\n\x0eHandController\x12;\n\x0eStreamHandData\x12\x15.handcontrol.HandData\x1a\x10.handcontrol.Ack(\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -32,9 +32,9 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'hand_control_pb2', _globals
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
   _globals['_HANDDATA']._serialized_start=35
-  _globals['_HANDDATA']._serialized_end=112
-  _globals['_ACK']._serialized_start=114
-  _globals['_ACK']._serialized_end=136
-  _globals['_HANDCONTROLLER']._serialized_start=138
-  _globals['_HANDCONTROLLER']._serialized_end=215
+  _globals['_HANDDATA']._serialized_end=90
+  _globals['_ACK']._serialized_start=92
+  _globals['_ACK']._serialized_end=114
+  _globals['_HANDCONTROLLER']._serialized_start=116
+  _globals['_HANDCONTROLLER']._serialized_end=193
 # @@protoc_insertion_point(module_scope)

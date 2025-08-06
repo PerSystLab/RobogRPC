@@ -1,8 +1,3 @@
-"""
-gRPC Server - Hand Control System
-Eldiven verilerini alır ve robot'a servo komutları gönderir.
-"""
-
 import grpc
 from concurrent import futures
 import time
@@ -11,111 +6,77 @@ import serial
 import hand_control_pb2
 import hand_control_pb2_grpc
 
-# Konfigürasyon
-ROBOT_SERIAL_PORT = '/tmp/robot_write'  # Simülasyon için
-ROBOT_BAUD_RATE = 9600              # lehand.ino ile aynı hız
+ROBOT_SERIAL_PORT = '/tmp/robot_write'
+ROBOT_BAUD_RATE = 9600
 GRPC_PORT = 50051
-MAX_WORKERS = 10
-
-def map_sensor_to_servo(sensor_value, in_min=0, in_max=1023, out_min=500, out_max=2500):
-    """Sensör değerini servo PWM değerine dönüştür."""
-    sensor_value = max(in_min, min(sensor_value, in_max))
-    return (sensor_value - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
-
-def format_servo_command(servo_values):
-    """Servo değerlerini Arduino formatına çevir."""
-    return ",".join(map(str, servo_values)) + "\n"
 
 class HandControllerServicer(hand_control_pb2_grpc.HandControllerServicer):
-    """gRPC service implementasyonu."""
     
     def __init__(self):
         self.robot_serial = None
-        self.start_time = None
         self.message_count = 0
-        self.total_latency = 0
-        
-        self._initialize_serial_connection()
+        self.total_e2e_latency = 0
+        self.start_time = None
+        self._initialize_serial()
     
-    def _initialize_serial_connection(self):
-        """Robot Arduino'su ile bağlantıyı kur."""
+    def _initialize_serial(self):
         try:
             self.robot_serial = serial.Serial(ROBOT_SERIAL_PORT, ROBOT_BAUD_RATE, timeout=1)
-            print(f"Robot Arduino'suna bağlanıldı: {ROBOT_SERIAL_PORT}")
+            print(f"Robot bağlandı: {ROBOT_SERIAL_PORT}")
         except serial.SerialException as e:
-            print(f"Robot Arduino'suna bağlanılamadı: {e}")
+            print(f"Robot bağlantı hatası: {e}")
     
     def StreamHandData(self, request_iterator, context):
-        """Eldiven veri akışını işle."""
+        print("Client ile bağlantı kuruldu.")
         self.start_time = time.time()
-        print("⏳ Server hazır. Client'dan veri akışı bekleniyor...")
-        print("Client veri akışı başladı")
         
         try:
             for hand_data in request_iterator:
-                self._process_hand_data(hand_data)
-                
-        except grpc.RpcError as e:
-            print(f"gRPC hatası: {e}")
+                self._process_data(hand_data)
         except Exception as e:
-            print(f"Beklenmeyen hata: {e}")
+            print(f"Hata: {e}")
         
-        self._log_final_statistics()
-        return hand_control_pb2.Ack(success=True)
-    
-    def _process_hand_data(self, hand_data):
-        """Tek bir eldiven mesajını işle."""
-        message_start_time = time.time()
-        self.message_count += 1
-        
-        # Sensör değerlerini servo komutlarına dönüştür
-        servo_commands = [
-            int(map_sensor_to_servo(val, 0, 1023, 500, 2500)) 
-            for val in hand_data.finger_values
-        ]
-        
-        # Robot'a servo komutlarını gönder
-        if self.robot_serial and self.robot_serial.is_open:
-            command_string = format_servo_command(servo_commands)
-            self.robot_serial.write(command_string.encode('utf-8'))
-        
-        # Performans metriklerini hesapla ve göster
-        self._update_metrics(message_start_time, servo_commands)
-    
-    def _update_metrics(self, message_start_time, servo_commands):
-        """Performans metriklerini güncelle."""
-        processing_time = (time.time() - message_start_time) * 1000  # ms
-        self.total_latency += processing_time
-        avg_latency = self.total_latency / self.message_count
-        
-        total_time = time.time() - self.start_time
-        throughput = self.message_count / total_time
-        
-        if self.message_count % 50 == 0:
-            print(f"SERVER: #{self.message_count:04d} | Latency: {processing_time:.1f}ms | Ort: {avg_latency:.1f}ms | Servolar: {servo_commands}")
-    
-    def _log_final_statistics(self):
-        """Final istatistikleri göster."""
         if self.message_count > 0:
             total_time = time.time() - self.start_time
-            avg_latency = self.total_latency / self.message_count
+            avg_e2e_latency = self.total_e2e_latency / self.message_count
             throughput = self.message_count / total_time
-            
-            print(f"Veri akışı sona erdi - Toplam: {self.message_count} mesaj, "
-                  f"Süre: {total_time:.2f}s, Ortalama latency: {avg_latency:.2f}ms, "
-                  f"Throughput: {throughput:.2f} msg/s")
+            print(f"Toplam: {self.message_count} mesaj, Süre: {total_time:.2f}s, Ort E2E: {avg_e2e_latency:.2f}ms, Throughput: {throughput:.1f} msg/s")
+        
+        return hand_control_pb2.Ack(success=True)
+    
+    def _process_data(self, hand_data):
+        self.message_count += 1
+        
+        # End-to-end latency hesapla
+        current_time_ms = int(time.time() * 1000)
+        end_to_end_latency = current_time_ms - hand_data.timestamp_ms
+        self.total_e2e_latency += end_to_end_latency
+        avg_e2e_latency = self.total_e2e_latency / self.message_count
+        
+        # Servo değerleri al
+        servo_values = hand_data.finger_values
+        
+        # Arduino'ya gönder
+        if self.robot_serial and self.robot_serial.is_open:
+            command = ",".join(map(str, servo_values)) + "\n"
+            self.robot_serial.write(command.encode('utf-8'))
+        
+        # Throughput hesapla
+        elapsed = time.time() - self.start_time
+        throughput = self.message_count / elapsed if elapsed > 0 else 0
+        
+        # Her 50 mesajda bir göster
+        if self.message_count % 50 == 0:
+            print(f"SERVER #{self.message_count:04d} | {throughput:.1f} msg/s | E2E: {end_to_end_latency}ms | Ort E2E: {avg_e2e_latency:.1f}ms | Servolar: {servo_values}")
 
 def serve():
-    """gRPC server'ı başlat."""
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=MAX_WORKERS))
+    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     hand_control_pb2_grpc.add_HandControllerServicer_to_server(HandControllerServicer(), server)
     server.add_insecure_port(f'[::]:{GRPC_PORT}')
     server.start()
     
-    print(f"gRPC Server başlatıldı - Port: {GRPC_PORT}")
-    print(f"gRPC Server çalışıyor - Port: {GRPC_PORT}")
-    print("Server hazır! Artık Client'ı başlatabilirsiniz")
-    print("Client bağlantısı bekleniyor...")
+    print(f"Server başladı - Port: {GRPC_PORT}")
+    print("Client bekleniyor...")
     
     try:
         server.wait_for_termination()
