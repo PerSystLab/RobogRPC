@@ -6,13 +6,13 @@ import hand_control_pb2
 import hand_control_pb2_grpc
 
 GLOVE_SERIAL_PORT = '/tmp/glove_read'
-GLOVE_BAUD_RATE = 115200
-SERVER_ADDRESS = 'localhost'
+GLOVE_BAUD_RATE = 9600
+SERVER_ADDRESS = '192.168.20.101'
 SERVER_PORT = 50051
 
 def parse_hand_data(line):
     try:
-        parts = line.split(',')
+        parts = line.split()
         if len(parts) == 5:
             finger_values = list(map(int, parts))
             return finger_values
@@ -38,8 +38,8 @@ def generate_hand_data(serial_port):
                 elapsed = time.time() - start_time
                 rate = message_count / elapsed if elapsed > 0 else 0
                 
-                if message_count % 50 == 0:
-                    print(f"CLIENT #{message_count:04d} | {rate:.1f} msg/s | Parmaklar: {finger_values}")
+                
+                print(f"CLIENT #{message_count:04d} | {rate:.1f} msg/s | Parmaklar: {finger_values}")
                 
                 # Timestamp ekle
                 timestamp_ms = int(time.time() * 1000)
