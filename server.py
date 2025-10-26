@@ -1,6 +1,7 @@
 import grpc
 from concurrent import futures
 import time
+import threading
 import serial
 
 import hand_control_pb2
@@ -14,9 +15,8 @@ class HandControllerServicer(hand_control_pb2_grpc.HandControllerServicer):
     
     def __init__(self):
         self.robot_serial = None
-        self.message_count = 0
-        self.total_e2e_latency = 0
-        self.start_time = None
+        self._serial_lock = threading.Lock()
+        self._last_sent_values = None
         self._initialize_serial()
     
     def _initialize_serial(self):
@@ -28,46 +28,56 @@ class HandControllerServicer(hand_control_pb2_grpc.HandControllerServicer):
     
     def StreamHandData(self, request_iterator, context):
         print("Client ile bağlantı kuruldu.")
-        self.start_time = time.time()
-        
+        start_time = time.time()
+        message_count = 0
+
         try:
             for hand_data in request_iterator:
-                self._process_data(hand_data)
+                message_count += 1
+
+                servo_values = self._quantize_servo_values(hand_data.finger_values)
+
+                if self._last_sent_values == tuple(servo_values):
+                    continue
+
+                self._send_to_serial(servo_values)
+                self._last_sent_values = tuple(servo_values)
+
+                if message_count % 50 == 0:
+                    elapsed = time.time() - start_time
+                    throughput = message_count / elapsed if elapsed > 0 else 0
+                    print(
+                        f"SERVER #{message_count:04d} | {throughput:.1f} msg/s | Servolar: {servo_values}"
+                    )
         except Exception as e:
             print(f"Hata: {e}")
         
-        if self.message_count > 0:
-            total_time = time.time() - self.start_time
-            avg_e2e_latency = self.total_e2e_latency / self.message_count
-            throughput = self.message_count / total_time
-            print(f"Toplam: {self.message_count} mesaj, Süre: {total_time:.2f}s, Ort E2E: {avg_e2e_latency:.2f}ms, Throughput: {throughput:.1f} msg/s")
+        if message_count > 0:
+            total_time = time.time() - start_time
+            throughput = message_count / total_time if total_time > 0 else 0
+            print(
+                f"Toplam: {message_count} mesaj, Süre: {total_time:.2f}s, "
+                f"Throughput: {throughput:.1f} msg/s"
+            )
         
         return hand_control_pb2.Ack(success=True)
-    
-    def _process_data(self, hand_data):
-        self.message_count += 1
-        
-        # End-to-end latency hesapla
-        current_time_ms = int(time.time() * 1000)
-        end_to_end_latency = current_time_ms - hand_data.timestamp_ms
-        self.total_e2e_latency += end_to_end_latency
-        avg_e2e_latency = self.total_e2e_latency / self.message_count
-        
-        # Servo değerleri al
-        servo_values = hand_data.finger_values
-        
-        # Arduino'ya gönder
-        if self.robot_serial and self.robot_serial.is_open:
-            command = ",".join(map(str, servo_values)) + "\n"
-            self.robot_serial.write(command.encode('utf-8'))
-        
-        # Throughput hesapla
-        elapsed = time.time() - self.start_time
-        throughput = self.message_count / elapsed if elapsed > 0 else 0
-        
-        # Her 50 mesajda bir göster
-        if self.message_count % 50 == 0:
-            print(f"SERVER #{self.message_count:04d} | {throughput:.1f} msg/s | E2E: {end_to_end_latency}ms | Ort E2E: {avg_e2e_latency:.1f}ms | Servolar: {servo_values}")
+
+    def _send_to_serial(self, servo_values):
+        if not self.robot_serial or not self.robot_serial.is_open:
+            return
+
+        command = ",".join(map(str, servo_values)) + "\n"
+
+        try:
+            with self._serial_lock:
+                self.robot_serial.write(command.encode('utf-8'))
+        except serial.SerialException as e:
+            print(f"Seri yazma hatası: {e}")
+
+    def _quantize_servo_values(self, values):
+        allowed_positions = (500, 1000, 1500)
+        # Clamp each incoming value to the nearest allowed servo position.
+        return [min(allowed_positions, key=lambda target: abs(value - target)) for value in values]
 
 def serve():
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
